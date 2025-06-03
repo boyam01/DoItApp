@@ -12,51 +12,81 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.yourname.doitapp.data.Task
 import java.text.SimpleDateFormat
 import java.util.*
+import androidx.compose.ui.graphics.Color
+import androidx.compose.foundation.shape.RoundedCornerShape
+
 
 @Composable
 fun TaskListScreen(viewModel: TaskViewModel = viewModel()) {
     val tasks by viewModel.tasks.collectAsState()
     var showDialog by remember { mutableStateOf(false) }
 
-    Column(modifier = Modifier.fillMaxSize().padding(16.dp)) {
-        Text("任務清單", style = MaterialTheme.typography.headlineSmall)
-
-        Spacer(modifier = Modifier.height(8.dp))
-
-        Button(onClick = { showDialog = true }) {
-            Text("新增任務")
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(16.dp)
+    ) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween,
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Text("任務清單", style = MaterialTheme.typography.headlineSmall)
+            Button(onClick = { showDialog = true }) {
+                Text("新增任務")
+            }
         }
 
         Spacer(modifier = Modifier.height(16.dp))
 
         tasks.forEach { task ->
-            Card(
+            ElevatedCard(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(vertical = 4.dp)
+                    .padding(vertical = 6.dp),
+                elevation = CardDefaults.elevatedCardElevation(3.dp)
             ) {
                 Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    modifier = Modifier.padding(12.dp)
+                    verticalAlignment = Alignment.Top,
+                    modifier = Modifier.padding(16.dp)
                 ) {
                     Checkbox(
                         checked = task.isDone,
                         onCheckedChange = { viewModel.toggleTaskDone(task) }
                     )
 
+                    Spacer(modifier = Modifier.width(8.dp))
+
                     Column(modifier = Modifier.weight(1f)) {
                         Text(
                             text = task.content,
                             style = MaterialTheme.typography.bodyLarge
                         )
-                        task.subtasks.forEach { sub ->
-                            Text("• $sub", style = MaterialTheme.typography.bodySmall)
+
+                        if (task.subtasks.isNotEmpty()) {
+                            Spacer(modifier = Modifier.height(4.dp))
+                            task.subtasks.forEach { sub ->
+                                Text(
+                                    text = "‧ $sub",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    modifier = Modifier.padding(start = 12.dp)
+                                )
+                            }
                         }
+
                         if (!task.reminderDate.isNullOrEmpty()) {
-                            Text(
-                                "提醒日期：${task.reminderDate}",
-                                style = MaterialTheme.typography.bodySmall
-                            )
+                            Spacer(modifier = Modifier.height(6.dp))
+                            Surface(
+                                color = Color(0xFFF1F8E9),
+                                shape = RoundedCornerShape(8.dp),
+                                modifier = Modifier.padding(start = 4.dp)
+                            ) {
+                                Text(
+                                    text = "提醒：${task.reminderDate}",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                                )
+                            }
                         }
                     }
                 }
@@ -68,11 +98,7 @@ fun TaskListScreen(viewModel: TaskViewModel = viewModel()) {
                 onDismiss = { showDialog = false },
                 onSave = { title, subtasks, date ->
                     viewModel.addTask(
-                        Task(
-                            content = title,
-                            reminderDate = date,
-                            subtasks = subtasks
-                        )
+                        Task(content = title, subtasks = subtasks, reminderDate = date)
                     )
                     showDialog = false
                 }
@@ -80,6 +106,7 @@ fun TaskListScreen(viewModel: TaskViewModel = viewModel()) {
         }
     }
 }
+
 
 @Composable
 fun AddTaskDialog(onDismiss: () -> Unit, onSave: (String, List<String>, String?) -> Unit) {
@@ -95,24 +122,30 @@ fun AddTaskDialog(onDismiss: () -> Unit, onSave: (String, List<String>, String?)
         onDismissRequest = onDismiss,
         title = { Text("新增任務") },
         confirmButton = {
-            Button(onClick = {
-                if (title.isNotBlank()) onSave(title, subtasks, reminderDate)
-            }) { Text("儲存") }
+            Button(
+                onClick = {
+                    if (title.isNotBlank()) onSave(title, subtasks, reminderDate)
+                }
+            ) { Text("儲存") }
         },
         dismissButton = {
             TextButton(onClick = onDismiss) { Text("取消") }
         },
         text = {
-            Column {
+            Column(modifier = Modifier.fillMaxWidth()) {
                 OutlinedTextField(
                     value = title,
                     onValueChange = { title = it },
                     label = { Text("任務標題") },
                     modifier = Modifier.fillMaxWidth()
                 )
-                Spacer(modifier = Modifier.height(8.dp))
 
-                Row(verticalAlignment = Alignment.CenterVertically) {
+                Spacer(modifier = Modifier.height(12.dp))
+
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
                     OutlinedTextField(
                         value = subtaskInput,
                         onValueChange = { subtaskInput = it },
@@ -131,10 +164,14 @@ fun AddTaskDialog(onDismiss: () -> Unit, onSave: (String, List<String>, String?)
                 }
 
                 subtasks.forEach {
-                    Text("• $it", style = MaterialTheme.typography.bodySmall)
+                    Text(
+                        text = "‧ $it",
+                        style = MaterialTheme.typography.bodySmall,
+                        modifier = Modifier.padding(start = 8.dp, top = 2.dp)
+                    )
                 }
 
-                Spacer(modifier = Modifier.height(8.dp))
+                Spacer(modifier = Modifier.height(12.dp))
 
                 Button(onClick = {
                     val calendar = Calendar.getInstance()
