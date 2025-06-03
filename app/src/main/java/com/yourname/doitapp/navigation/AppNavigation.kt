@@ -1,5 +1,6 @@
 package com.yourname.doitapp.navigation
 
+
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -15,6 +16,7 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import com.yourname.doitapp.screens.*
 import androidx.compose.ui.draw.clip
+
 
 
 @Composable
@@ -37,7 +39,7 @@ fun AppNavigation(navController: NavHostController) {
             startDestination = BottomNavItem.Tasks.route,
             modifier = Modifier.padding(innerPadding)
         ) {
-            composable(BottomNavItem.Tasks.route) { TaskListScreen() }
+            composable(BottomNavItem.Tasks.route) { com.yourname.doitapp.screens.TaskListScreen() }
             composable(BottomNavItem.Calendar.route) { CalendarScreen() }
             composable(BottomNavItem.Done.route) { DoneScreen() }
             composable(BottomNavItem.Pomodoro.route) { PomodoroScreen() }

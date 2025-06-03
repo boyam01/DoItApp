@@ -1,4 +1,3 @@
-// ✅ TaskViewModel.kt（升級版）
 package com.yourname.doitapp.screens
 
 import android.app.Application
@@ -38,6 +37,8 @@ class TaskViewModel(app: Application) : AndroidViewModel(app) {
     fun clearAllTasks() = viewModelScope.launch {
         dao.deleteAllTasks()
     }
+
+
 
 
     private val _motivation = MutableStateFlow<String?>(null)
