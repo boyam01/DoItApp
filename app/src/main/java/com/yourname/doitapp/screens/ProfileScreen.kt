@@ -1,7 +1,11 @@
 package com.yourname.doitapp.screens
 
 import android.content.Context
+import android.content.Intent
+import android.net.Uri
 import android.os.Environment
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.*
 import androidx.compose.material3.*
@@ -16,13 +20,11 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.yourname.doitapp.R
-import com.yourname.doitapp.screens.TaskViewModel
-import java.io.File
-import java.io.FileInputStream
-import java.io.FileOutputStream
-import java.nio.channels.FileChannel
+import java.io.*
 import java.text.SimpleDateFormat
 import java.util.*
+import android.app.PendingIntent
+
 
 @Composable
 fun ProfileScreen(viewModel: TaskViewModel = viewModel()) {
@@ -31,7 +33,25 @@ fun ProfileScreen(viewModel: TaskViewModel = viewModel()) {
     val focusCount = viewModel.focusCount
     val userId = remember { UUID.randomUUID().toString().substring(0, 8) }
     val context = LocalContext.current
-    var exportStatus by remember { mutableStateOf("") }
+    var statusMessage by remember { mutableStateOf("") }
+
+    val exportLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.CreateDocument("application/octet-stream"),
+        onResult = { uri: Uri? ->
+            if (uri != null) {
+                statusMessage = exportDatabaseToUri(context, uri)
+            }
+        }
+    )
+
+    val importLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.OpenDocument(),
+        onResult = { uri: Uri? ->
+            if (uri != null) {
+                statusMessage = importDatabaseFromUri(context, uri)
+            }
+        }
+    )
 
     Column(
         modifier = Modifier
@@ -40,7 +60,6 @@ fun ProfileScreen(viewModel: TaskViewModel = viewModel()) {
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
-        // 加上虛擬頭像
         Image(
             painter = painterResource(id = R.drawable.ic_launcher_foreground),
             contentDescription = "User Avatar",
@@ -65,40 +84,83 @@ fun ProfileScreen(viewModel: TaskViewModel = viewModel()) {
             Text("重設所有資料", color = Color.White)
         }
 
-        Spacer(modifier = Modifier.height(16.dp))
-
         Button(onClick = {
-            exportStatus = exportDatabase(context)
+            exportLauncher.launch("backup_${System.currentTimeMillis()}.db")
         }) {
-            Text("📦 匯出資料庫")
+            Text("📤 選擇匯出位置")
         }
 
-        if (exportStatus.isNotEmpty()) {
-            Text(exportStatus, color = Color.Gray)
+        Button(onClick = {
+            importLauncher.launch(arrayOf("*/*"))
+        }) {
+            Text("📥 從檔案匯入")
+        }
+
+        if (statusMessage.isNotEmpty()) {
+            Text(statusMessage, color = Color.Gray)
+            if (statusMessage.contains("匯入成功")) {
+                Text("⚠ 匯入後需重新啟動 App 才會生效", color = Color.Red, fontSize = 14.sp)
+            }
         }
     }
 }
 
-fun exportDatabase(context: Context): String {
+fun exportDatabaseToUri(context: Context, uri: Uri): String {
     return try {
         val dbFile = context.getDatabasePath("doit_database")
-        val backupDir = File(
-            context.getExternalFilesDir(Environment.DIRECTORY_DOCUMENTS),
-            "DoItBackup"
-        )
-        if (!backupDir.exists()) backupDir.mkdirs()
+        val inputStream: InputStream = FileInputStream(dbFile)
+        val outputStream: OutputStream? = context.contentResolver.openOutputStream(uri)
 
-        val timestamp = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.getDefault()).format(Date())
-        val backupFile = File(backupDir, "backup_$timestamp.db")
-
-        val srcChannel: FileChannel = FileInputStream(dbFile).channel
-        val dstChannel: FileChannel = FileOutputStream(backupFile).channel
-        dstChannel.transferFrom(srcChannel, 0, srcChannel.size())
-        srcChannel.close()
-        dstChannel.close()
-
-        "✔ 已匯出：${backupFile.absolutePath}"
+        if (outputStream != null) {
+            inputStream.copyTo(outputStream)
+            inputStream.close()
+            outputStream.close()
+            "✔ 資料庫已成功匯出"
+        } else {
+            "❌ 無法打開指定位置"
+        }
     } catch (e: Exception) {
-        "❌ 匯出失敗：${e.message}"
+        "❌ 匯出錯誤：${e.message}"
+    }
+}
+
+fun importDatabaseFromUri(context: Context, uri: Uri): String {
+    return try {
+        val dbFile = context.getDatabasePath("doit_database")
+        val inputStream: InputStream? = context.contentResolver.openInputStream(uri)
+        val outputStream: OutputStream = FileOutputStream(dbFile, false)
+
+        if (inputStream != null) {
+            inputStream.copyTo(outputStream)
+            inputStream.close()
+            outputStream.close()
+            "📥 匯入成功（請重新啟動 App 查看變更）"
+        } else {
+            "❌ 無法讀取選取的檔案"
+        }
+    } catch (e: Exception) {
+        "❌ 匯入錯誤：${e.message}"
+    }
+}
+fun restartApp(context: Context) {
+    val packageManager = context.packageManager
+    val intent = packageManager.getLaunchIntentForPackage(context.packageName)
+    if (intent != null) {
+        intent.addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP)
+        val pendingIntent = PendingIntent.getActivity(
+            context,
+            0,
+            intent,
+            PendingIntent.FLAG_CANCEL_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+
+        val alarmManager = context.getSystemService(Context.ALARM_SERVICE) as android.app.AlarmManager
+        alarmManager.setExact(
+            android.app.AlarmManager.RTC,
+            System.currentTimeMillis() + 100,
+            pendingIntent
+        )
+        // 關閉 App
+        System.exit(0)
     }
 }
