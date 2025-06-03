@@ -11,6 +11,12 @@ import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
+
+
 
 
 class TaskViewModel(app: Application) : AndroidViewModel(app) {
@@ -21,6 +27,18 @@ class TaskViewModel(app: Application) : AndroidViewModel(app) {
         "完成一件事就是贏了一次 ✨",
         "又一項任務達成了，太讚啦！🔥"
     )
+
+    var focusCount by mutableStateOf(0)
+        private set
+
+    fun resetFocusCount() {
+        focusCount = 0
+    }
+
+    fun clearAllTasks() = viewModelScope.launch {
+        dao.deleteAllTasks()
+    }
+
 
     private val _motivation = MutableStateFlow<String?>(null)
     val motivation: StateFlow<String?> = _motivation
