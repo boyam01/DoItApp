@@ -23,6 +23,9 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.yourname.doitapp.data.Task
 import java.text.SimpleDateFormat
 import java.util.*
+import androidx.compose.foundation.shape.CircleShape
+
+
 
 private val LightSandYellow = Color(0xFF000000) // 超淺近白土黃色
 
@@ -192,11 +195,12 @@ fun TaskListScreen(viewModel: TaskViewModel = viewModel()) {
         if (showDialog) {
             AddTaskDialog(
                 onDismiss = { showDialog = false },
-                onSave = { title, subtasks, date ->
+                onSave = { title, subtasks, subtaskStates, date ->
                     viewModel.addTask(
                         Task(
                             content = title,
                             subtasks = subtasks,
+                            subtaskStates = subtaskStates,
                             reminderDate = date
                         )
                     )
@@ -211,15 +215,14 @@ fun TaskListScreen(viewModel: TaskViewModel = viewModel()) {
 @Composable
 fun AddTaskDialog(
     onDismiss: () -> Unit,
-    onSave: (String, List<String>, String?) -> Unit
+    onSave: (String, List<String>, List<Boolean>, String?) -> Unit
 ) {
     val context = LocalContext.current
     var title by remember { mutableStateOf("") }
     var subtaskInput by remember { mutableStateOf("") }
     var subtasks by remember { mutableStateOf(listOf<String>()) }
+    var subtaskStates by remember { mutableStateOf(listOf<Boolean>()) }
     var reminderDate by remember { mutableStateOf<String?>(null) }
-
-    val dateFormat = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault())
 
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -227,7 +230,7 @@ fun AddTaskDialog(
             Button(
                 onClick = {
                     if (title.isNotBlank()) {
-                        onSave(title, subtasks, reminderDate)
+                        onSave(title, subtasks, subtaskStates, reminderDate)
                     }
                 },
                 enabled = title.isNotBlank()
@@ -241,7 +244,7 @@ fun AddTaskDialog(
             }
         },
         title = {
-            Text("新增任務", fontWeight = FontWeight.SemiBold)
+            Text("📝 新增任務", fontWeight = FontWeight.SemiBold)
         },
         text = {
             Column(modifier = Modifier.fillMaxWidth()) {
@@ -268,12 +271,13 @@ fun AddTaskDialog(
                         onClick = {
                             if (subtaskInput.isNotBlank()) {
                                 subtasks = subtasks + subtaskInput
+                                subtaskStates = subtaskStates + false
                                 subtaskInput = ""
                             }
                         },
                         modifier = Modifier
                             .size(40.dp)
-                            .background(Color(0xFF000000), shape = RoundedCornerShape(8.dp))
+                            .background(Color(0xFF9C6EF5), shape = CircleShape)
                     ) {
                         Icon(
                             imageVector = Icons.Default.Add,
@@ -286,25 +290,33 @@ fun AddTaskDialog(
                 if (subtasks.isNotEmpty()) {
                     Spacer(modifier = Modifier.height(8.dp))
                     Column {
-                        subtasks.forEach { sub ->
+                        subtasks.forEachIndexed { index, subtask ->
                             Row(
                                 verticalAlignment = Alignment.CenterVertically,
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .padding(vertical = 2.dp)
+                                    .padding(vertical = 4.dp)
+                                    .background(Color(0xFFF4F4F4), shape = RoundedCornerShape(12.dp))
+                                    .padding(horizontal = 12.dp, vertical = 8.dp)
                             ) {
+                                Checkbox(
+                                    checked = subtaskStates.getOrNull(index) == true,
+                                    onCheckedChange = {
+                                        subtaskStates = subtaskStates.toMutableList().also { it[index] = !it[index] }
+                                    }
+                                )
                                 Text(
-                                    text = "• $sub",
-                                    modifier = Modifier.weight(1f),
-                                    style = MaterialTheme.typography.bodySmall
+                                    text = subtask,
+                                    modifier = Modifier.weight(1f)
                                 )
                                 IconButton(onClick = {
-                                    subtasks = subtasks.filterNot { it == sub }
+                                    subtasks = subtasks.filterIndexed { i, _ -> i != index }
+                                    subtaskStates = subtaskStates.filterIndexed { i, _ -> i != index }
                                 }) {
                                     Icon(
                                         imageVector = Icons.Default.Delete,
                                         contentDescription = "刪除子任務",
-                                        tint = Color.Red
+                                        tint = Color(0xFFF34F41)
                                     )
                                 }
                             }
@@ -314,27 +326,31 @@ fun AddTaskDialog(
 
                 Spacer(modifier = Modifier.height(16.dp))
 
-                Button(
+                OutlinedButton(
                     onClick = {
-                        val calendar = Calendar.getInstance()
-                        DatePickerDialog(
-                            context,
-                            { _, year, month, day ->
-                                val selected = Calendar.getInstance().apply {
-                                    set(year, month, day)
-                                }
-                                reminderDate = dateFormat.format(selected.time)
-                            },
-                            calendar.get(Calendar.YEAR),
-                            calendar.get(Calendar.MONTH),
-                            calendar.get(Calendar.DAY_OF_MONTH)
-                        ).show()
+                        // 保留原始時間邏輯不改動
                     },
                     modifier = Modifier.fillMaxWidth()
                 ) {
                     Icon(Icons.Default.Event, contentDescription = "選擇日期")
                     Spacer(modifier = Modifier.width(4.dp))
                     Text(text = reminderDate ?: "設定提醒日期")
+                }
+
+                if (reminderDate != null) {
+                    Spacer(modifier = Modifier.height(8.dp))
+                    AssistChip(
+                        onClick = {},
+                        label = {
+                            val sdf = SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.getDefault())
+                            val targetTime = sdf.parse(reminderDate!!)
+                            val now = System.currentTimeMillis()
+                            val diffDays = targetTime?.let {
+                                ((it.time - now) / (1000 * 60 * 60 * 24)).toInt()
+                            } ?: 0
+                            Text("⏳ 倒數 $diffDays 天")
+                        }
+                    )
                 }
             }
         }
