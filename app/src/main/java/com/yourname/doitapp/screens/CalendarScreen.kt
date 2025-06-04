@@ -34,7 +34,21 @@ fun CalendarScreen(viewModel: TaskViewModel = viewModel()) {
     var currentMonth by remember { mutableStateOf(YearMonth.now()) }
     val formatter = DateTimeFormatter.ofPattern("yyyy-MM-dd")
     val tasks by viewModel.tasks.collectAsState(initial = emptyList())
-    val taskDates = tasks.mapNotNull { it.reminderDate }.toSet()
+
+    val dateOnlyFormatter = java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.getDefault())
+    val dateTimeFormatter = java.text.SimpleDateFormat("yyyy-MM-dd HH:mm", java.util.Locale.getDefault())
+
+    val taskDates = tasks.mapNotNull { reminder ->
+        try {
+            reminder.reminderDate?.let {
+                val parsed = dateTimeFormatter.parse(it)
+                dateOnlyFormatter.format(parsed!!)
+            }
+        } catch (e: Exception) {
+            null
+        }
+    }.toSet()
+
 
     Column(
         modifier = Modifier

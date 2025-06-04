@@ -10,16 +10,13 @@ import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
-import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
 
-
-
-
 class TaskViewModel(app: Application) : AndroidViewModel(app) {
-    private val dao = AppDatabase.getInstance(app).taskDao()
+    private val db = AppDatabase.getInstance(app)
+    private val dao = db.taskDao()
 
     private val messages = listOf(
         "做得好！持續進步 💪",
@@ -30,6 +27,11 @@ class TaskViewModel(app: Application) : AndroidViewModel(app) {
     var focusCount by mutableStateOf(0)
         private set
 
+    private val _motivation = MutableStateFlow<String?>(null)
+    val motivation: StateFlow<String?> = _motivation
+
+    val tasks = dao.getAllTasks().stateIn(viewModelScope, SharingStarted.WhileSubscribed(), emptyList())
+
     fun resetFocusCount() {
         focusCount = 0
     }
@@ -37,18 +39,6 @@ class TaskViewModel(app: Application) : AndroidViewModel(app) {
     fun clearAllTasks() = viewModelScope.launch {
         dao.deleteAllTasks()
     }
-
-
-
-
-    private val _motivation = MutableStateFlow<String?>(null)
-    val motivation: StateFlow<String?> = _motivation
-
-    fun clearMotivation() {
-        _motivation.value = null
-    }
-
-    val tasks = dao.getAllTasks().stateIn(viewModelScope, SharingStarted.WhileSubscribed(), emptyList())
 
     fun addTask(task: Task) = viewModelScope.launch {
         dao.insertTask(task)
@@ -61,15 +51,55 @@ class TaskViewModel(app: Application) : AndroidViewModel(app) {
     fun toggleTaskDone(task: Task) = viewModelScope.launch {
         val updated = task.copy(isDone = !task.isDone)
         dao.insertTask(updated)
-
-        // ✅ 如果這次是從未完成 → 完成，顯示一句激勵語
         if (updated.isDone) {
             _motivation.value = messages.random()
         }
     }
 
-
     fun getTasksByDate(date: String): List<Task> {
-        return tasks.value.filter { it.reminderDate == date }
+        val formatterFull = java.text.SimpleDateFormat("yyyy-MM-dd HH:mm", java.util.Locale.getDefault())
+        val formatterDate = java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.getDefault())
+
+        return tasks.value.filter { task ->
+            task.reminderDate?.let {
+                try {
+                    val parsedDate = formatterFull.parse(it)
+                    val formatted = formatterDate.format(parsedDate!!)
+                    formatted == date
+                } catch (e: Exception) {
+                    false
+                }
+            } ?: false
+        }
+    }
+
+
+    fun updateSubtaskState(taskId: Int, index: Int, newState: Boolean) {
+        viewModelScope.launch {
+            val task = dao.getById(taskId) ?: return@launch
+            val newStates = task.subtaskStates.toMutableList().also { it[index] = newState }
+            dao.update(task.copy(subtaskStates = newStates))
+        }
+    }
+
+    fun updateSubtaskContent(taskId: Int, index: Int, newText: String) {
+        viewModelScope.launch {
+            val task = dao.getById(taskId) ?: return@launch
+            val newSubtasks = task.subtasks.toMutableList().also { it[index] = newText }
+            dao.update(task.copy(subtasks = newSubtasks))
+        }
+    }
+
+    fun removeSubtask(taskId: Int, index: Int) {
+        viewModelScope.launch {
+            val task = dao.getById(taskId) ?: return@launch
+            val newSubtasks = task.subtasks.toMutableList().also { it.removeAt(index) }
+            val newStates = task.subtaskStates.toMutableList().also { it.removeAt(index) }
+            dao.update(task.copy(subtasks = newSubtasks, subtaskStates = newStates))
+        }
+    }
+
+    fun clearMotivation() {
+        _motivation.value = null
     }
 }

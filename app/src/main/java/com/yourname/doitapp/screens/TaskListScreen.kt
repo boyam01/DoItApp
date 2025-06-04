@@ -5,10 +5,12 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Event
 import androidx.compose.material.icons.filled.SubdirectoryArrowRight
 import androidx.compose.material3.*
@@ -23,11 +25,11 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.yourname.doitapp.data.Task
 import java.text.SimpleDateFormat
 import java.util.*
-import androidx.compose.foundation.shape.CircleShape
+import java.util.concurrent.TimeUnit
+import android.app.TimePickerDialog
 
 
-
-private val LightSandYellow = Color(0xFF000000) // 超淺近白土黃色
+private val LightSandYellow = Color(0xFF000000)
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -35,7 +37,6 @@ fun TaskListScreen(viewModel: TaskViewModel = viewModel()) {
     val tasks by viewModel.tasks.collectAsState(initial = emptyList())
     var showDialog by remember { mutableStateOf(false) }
 
-    // 用 Box 設整頁背景色
     Box(
         modifier = Modifier
             .fillMaxSize()
@@ -43,18 +44,17 @@ fun TaskListScreen(viewModel: TaskViewModel = viewModel()) {
     ) {
         Scaffold(
             topBar = {
-                // 移除 colors 參數，使用預設 TopAppBar
                 TopAppBar(
                     title = {
                         Text(
                             "我的任務清單",
                             fontWeight = FontWeight.Bold,
-                            color = Color(0xFF000000) // 深棕色文字
+                            color = Color(0xFF000000)
                         )
                     },
                     modifier = Modifier
                         .fillMaxWidth()
-                        .background(LightSandYellow) // 讓 AppBar 背景和 Box 一樣
+                        .background(LightSandYellow)
                 )
             },
             floatingActionButton = {
@@ -66,7 +66,6 @@ fun TaskListScreen(viewModel: TaskViewModel = viewModel()) {
                     Icon(Icons.Default.Add, contentDescription = "新增任務")
                 }
             },
-            // 不再傳 containerColor，背景由外層 Box 負責
             content = { innerPadding ->
                 LazyColumn(
                     modifier = Modifier
@@ -101,6 +100,7 @@ fun TaskListScreen(viewModel: TaskViewModel = viewModel()) {
                     } else {
                         items(tasks) { task ->
                             var expanded by remember { mutableStateOf(false) }
+                            val taskId = task.id
 
                             ElevatedCard(
                                 modifier = Modifier
@@ -159,29 +159,67 @@ fun TaskListScreen(viewModel: TaskViewModel = viewModel()) {
                                         }
                                         if (expanded) {
                                             Column(modifier = Modifier.padding(start = 24.dp)) {
-                                                task.subtasks.forEach { sub ->
-                                                    Text(
-                                                        text = "• $sub",
-                                                        style = MaterialTheme.typography.bodySmall,
-                                                        modifier = Modifier.padding(vertical = 2.dp)
-                                                    )
+                                                task.subtasks.forEachIndexed { index, subtask ->
+                                                    val checked = task.subtaskStates.getOrNull(index) == true
+                                                    var editedText by remember { mutableStateOf(subtask) }
+                                                    Row(
+                                                        verticalAlignment = Alignment.CenterVertically,
+                                                        modifier = Modifier.fillMaxWidth()
+                                                    ) {
+                                                        Checkbox(
+                                                            checked = checked,
+                                                            onCheckedChange = {
+                                                                viewModel.updateSubtaskState(taskId, index, !checked)
+                                                            }
+                                                        )
+                                                        OutlinedTextField(
+                                                            value = editedText,
+                                                            onValueChange = {
+                                                                editedText = it
+                                                                viewModel.updateSubtaskContent(taskId, index, it)
+                                                            },
+                                                            modifier = Modifier.weight(1f),
+                                                            textStyle = MaterialTheme.typography.bodySmall
+                                                        )
+                                                        IconButton(onClick = {
+                                                            viewModel.removeSubtask(taskId, index)
+                                                        }) {
+                                                            Icon(
+                                                                imageVector = Icons.Default.Delete,
+                                                                contentDescription = "刪除子任務",
+                                                                tint = Color(0xFFD32F2F)
+                                                            )
+                                                        }
+                                                    }
                                                 }
                                             }
                                         }
                                     }
 
-                                    task.reminderDate?.takeIf { it.isNotBlank() }?.let { dateStr ->
+                                    task.reminderDate?.let { dateStr ->
                                         Spacer(modifier = Modifier.height(8.dp))
+                                        val sdf = SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.getDefault())
+                                        val targetDate = try { sdf.parse(dateStr) } catch (e: Exception) { null }
+                                        val daysLeft = targetDate?.let {
+                                            val diff = it.time - System.currentTimeMillis()
+                                            TimeUnit.MILLISECONDS.toDays(diff).toInt()
+                                        }
+                                        val chipText = when {
+                                            daysLeft == null -> "❓ 未設定"
+                                            daysLeft > 0 -> "⏳ 還有 $daysLeft 天"
+                                            daysLeft == 0 -> "⚠️ 今天到期"
+                                            else -> "❌ 已過期"
+                                        }
+                                        val chipColor = when {
+                                            daysLeft == null -> Color.LightGray
+                                            daysLeft > 0 -> Color.Gray
+                                            daysLeft == 0 -> Color(0xFFFFA000)
+                                            else -> Color(0xFFD32F2F)
+                                        }
                                         AssistChip(
-                                            onClick = { /* 未來可打開編輯 */ },
-                                            label = { Text("提醒：$dateStr") },
-                                            leadingIcon = {
-                                                Icon(
-                                                    imageVector = Icons.Default.Event,
-                                                    contentDescription = "提醒"
-                                                )
-                                            }
-                                            // 這裡不指定顏色，使用預設樣式即可
+                                            onClick = {},
+                                            label = { Text(chipText, color = Color.White) },
+                                            colors = AssistChipDefaults.assistChipColors(containerColor = chipColor)
                                         )
                                     }
                                 }
@@ -328,9 +366,26 @@ fun AddTaskDialog(
 
                 OutlinedButton(
                     onClick = {
-                        // 保留原始時間邏輯不改動
+                        val calendar = Calendar.getInstance()
+                        val year = calendar.get(Calendar.YEAR)
+                        val month = calendar.get(Calendar.MONTH)
+                        val day = calendar.get(Calendar.DAY_OF_MONTH)
+
+                        DatePickerDialog(context, { _, y, m, d ->
+                            val hour = calendar.get(Calendar.HOUR_OF_DAY)
+                            val minute = calendar.get(Calendar.MINUTE)
+
+                            TimePickerDialog(context, { _, h, min ->
+                                val selectedCalendar = Calendar.getInstance().apply {
+                                    set(y, m, d, h, min)
+                                }
+                                val sdf = SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.getDefault())
+                                reminderDate = sdf.format(selectedCalendar.time)
+                            }, hour, minute, true).show()
+                        }, year, month, day).show()
                     },
-                    modifier = Modifier.fillMaxWidth()
+
+                            modifier = Modifier.fillMaxWidth()
                 ) {
                     Icon(Icons.Default.Event, contentDescription = "選擇日期")
                     Spacer(modifier = Modifier.width(4.dp))
