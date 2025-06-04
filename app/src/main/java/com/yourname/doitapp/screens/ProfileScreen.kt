@@ -1,9 +1,7 @@
 package com.yourname.doitapp.screens
 
 import android.content.Context
-import android.content.Intent
 import android.net.Uri
-import android.os.Environment
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Image
@@ -19,12 +17,16 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.google.gson.Gson
+import com.google.gson.reflect.TypeToken
 import com.yourname.doitapp.R
+import com.yourname.doitapp.data.Task
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 import java.io.*
 import java.text.SimpleDateFormat
 import java.util.*
-import android.app.PendingIntent
-
 
 @Composable
 fun ProfileScreen(viewModel: TaskViewModel = viewModel()) {
@@ -36,10 +38,12 @@ fun ProfileScreen(viewModel: TaskViewModel = viewModel()) {
     var statusMessage by remember { mutableStateOf("") }
 
     val exportLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.CreateDocument("application/octet-stream"),
+        contract = ActivityResultContracts.CreateDocument("application/json"),
         onResult = { uri: Uri? ->
             if (uri != null) {
-                statusMessage = exportDatabaseToUri(context, uri)
+                CoroutineScope(Dispatchers.IO).launch {
+                    statusMessage = exportTasksAsJson(context, tasks, uri)
+                }
             }
         }
     )
@@ -48,7 +52,9 @@ fun ProfileScreen(viewModel: TaskViewModel = viewModel()) {
         contract = ActivityResultContracts.OpenDocument(),
         onResult = { uri: Uri? ->
             if (uri != null) {
-                statusMessage = importDatabaseFromUri(context, uri)
+                CoroutineScope(Dispatchers.IO).launch {
+                    statusMessage = importTasksFromJson(context, uri, viewModel)
+                }
             }
         }
     )
@@ -63,9 +69,7 @@ fun ProfileScreen(viewModel: TaskViewModel = viewModel()) {
         Image(
             painter = painterResource(id = R.drawable.ic_launcher_foreground),
             contentDescription = "User Avatar",
-            modifier = Modifier
-                .size(96.dp)
-                .padding(8.dp),
+            modifier = Modifier.size(96.dp),
             contentScale = ContentScale.Crop
         )
 
@@ -85,82 +89,53 @@ fun ProfileScreen(viewModel: TaskViewModel = viewModel()) {
         }
 
         Button(onClick = {
-            exportLauncher.launch("backup_${System.currentTimeMillis()}.db")
+            val timestamp = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.getDefault()).format(Date())
+            exportLauncher.launch("DoIt_Backup_$timestamp.json")
         }) {
-            Text("📤 選擇匯出位置")
+            Text("📤 匯出任務清單 (JSON)")
         }
 
         Button(onClick = {
-            importLauncher.launch(arrayOf("*/*"))
+            importLauncher.launch(arrayOf("application/json"))
         }) {
-            Text("📥 從檔案匯入")
+            Text("📥 匯入任務清單 (JSON)")
         }
 
         if (statusMessage.isNotEmpty()) {
+            Spacer(modifier = Modifier.height(8.dp))
             Text(statusMessage, color = Color.Gray)
-            if (statusMessage.contains("匯入成功")) {
-                Text("⚠ 匯入後需重新啟動 App 才會生效", color = Color.Red, fontSize = 14.sp)
+        }
+    }
+}
+
+fun exportTasksAsJson(context: Context, tasks: List<Task>, uri: Uri): String {
+    return try {
+        val json = Gson().toJson(tasks)
+        context.contentResolver.openOutputStream(uri)?.use { output ->
+            OutputStreamWriter(output).use { writer ->
+                writer.write(json)
+                writer.flush()
             }
         }
-    }
-}
-
-fun exportDatabaseToUri(context: Context, uri: Uri): String {
-    return try {
-        val dbFile = context.getDatabasePath("doit_database")
-        val inputStream: InputStream = FileInputStream(dbFile)
-        val outputStream: OutputStream? = context.contentResolver.openOutputStream(uri)
-
-        if (outputStream != null) {
-            inputStream.copyTo(outputStream)
-            inputStream.close()
-            outputStream.close()
-            "✔ 資料庫已成功匯出"
-        } else {
-            "❌ 無法打開指定位置"
-        }
+        "✔ 匯出成功：任務清單已儲存為 JSON"
     } catch (e: Exception) {
-        "❌ 匯出錯誤：${e.message}"
+        "❌ 匯出失敗：${e.message}"
     }
 }
 
-fun importDatabaseFromUri(context: Context, uri: Uri): String {
+fun importTasksFromJson(context: Context, uri: Uri, viewModel: TaskViewModel): String {
     return try {
-        val dbFile = context.getDatabasePath("doit_database")
-        val inputStream: InputStream? = context.contentResolver.openInputStream(uri)
-        val outputStream: OutputStream = FileOutputStream(dbFile, false)
+        val input = context.contentResolver.openInputStream(uri) ?: return "❌ 無法讀取匯入檔案"
+        val json = input.bufferedReader().use { it.readText() }
+        val type = object : TypeToken<List<Task>>() {}.type
+        val tasks: List<Task> = Gson().fromJson(json, type)
 
-        if (inputStream != null) {
-            inputStream.copyTo(outputStream)
-            inputStream.close()
-            outputStream.close()
-            "📥 匯入成功（請重新啟動 App 查看變更）"
-        } else {
-            "❌ 無法讀取選取的檔案"
-        }
+        viewModel.clearAllTasks()
+        tasks.forEach { viewModel.addTask(it) }
+
+        "📥 匯入成功：已還原 ${tasks.size} 筆任務"
     } catch (e: Exception) {
-        "❌ 匯入錯誤：${e.message}"
+        "❌ 匯入失敗：${e.message}"
     }
 }
-fun restartApp(context: Context) {
-    val packageManager = context.packageManager
-    val intent = packageManager.getLaunchIntentForPackage(context.packageName)
-    if (intent != null) {
-        intent.addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP)
-        val pendingIntent = PendingIntent.getActivity(
-            context,
-            0,
-            intent,
-            PendingIntent.FLAG_CANCEL_CURRENT or PendingIntent.FLAG_IMMUTABLE
-        )
-
-        val alarmManager = context.getSystemService(Context.ALARM_SERVICE) as android.app.AlarmManager
-        alarmManager.setExact(
-            android.app.AlarmManager.RTC,
-            System.currentTimeMillis() + 100,
-            pendingIntent
-        )
-        // 關閉 App
-        System.exit(0)
-    }
-}
+123
