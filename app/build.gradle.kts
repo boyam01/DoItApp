@@ -76,6 +76,10 @@ dependencies {
     implementation("com.google.code.gson:gson:2.10.1")
     // ✅ Lifecycle ViewModel (Compose 版本)
 
+        // ... 其他依賴
+    implementation ("androidx.lifecycle:lifecycle-viewmodel-ktx:2.X.X") // 請將 X.X 替換為最新版本
+    implementation ("androidx.lifecycle:lifecycle-livedata-ktx:2.X.X") // 如果你也在用 LiveData
+    implementation ("androidx.lifecycle:lifecycle-runtime-ktx:2.X.X") // 如果你也在用 Lifecycle Runtime
 
     // Room
     implementation("androidx.room:room-runtime:2.6.1")
